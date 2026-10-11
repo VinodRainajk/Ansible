@@ -1,0 +1,11 @@
+---
+# Murex app VMs. The SSH login and password come from the credentials role
+# (credentials.yml or CyberArk). Before credentials are loaded (CyberArk mode
+# only), Ansible connects as the operator with their SSH key.
+ansible_user: "{{ mx_ssh_user | default(lookup('ansible.builtin.env', 'USER')) }}"
+ansible_password: "{{ mx_ssh_password | default('') }}"   # empty = SSH key
+ansible_become_password: "{{ mx_ssh_password | default('') }}"
+
+# OS user the Murex scripts run as (owns MX home, script_logs, staging).
+script_run_user: murex
+script_run_group: murex

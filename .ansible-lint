@@ -1,0 +1,11 @@
+---
+profile: production
+exclude_paths:
+  - collections/ansible_collections/
+  - tests/scripts/
+  - .ansible/
+skip_list:
+  # run_id, run_log_file and the credential variable names are a fixed
+  # contract shared by every role and script (see the plan), so they cannot
+  # carry a role prefix.
+  - var-naming[no-role-prefix]

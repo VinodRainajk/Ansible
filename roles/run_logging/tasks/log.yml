@@ -1,0 +1,31 @@
+---
+# Append one line to the run log on the control node and show it on the console:
+#   <ISO ts> <LEVEL> <run_id> <step> <message>
+# Inputs: log_level (INFO|WARN|ERROR, default INFO), log_step, log_message.
+# Never pass secrets in log_message.
+- name: Log | Build the line
+  ansible.builtin.set_fact:
+    _log_line: >-
+      {{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}
+      {{ log_level | default('INFO') }}
+      {{ hostvars['localhost']['run_id'] | default('no-run-id') }}
+      {{ log_step }}
+      {{ log_message | regex_replace('\s+', ' ') | trim }}
+
+- name: Log | Append to the run log
+  ansible.builtin.command:
+    argv:
+      - /bin/sh
+      - -c
+      - 'printf "%s\n" "$1" >> "$2"'
+      - log
+      - "{{ _log_line }}"
+      - "{{ hostvars['localhost']['run_log_file'] }}"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+
+- name: Log | Show the line
+  ansible.builtin.debug:
+    msg: "{{ _log_line }}"

@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: run_logging
+  namespace: murex
+  author: Murex platform team
+  description: "run_id, run log folder and log lines shared by every role"
+  license: proprietary
+  min_ansible_version: "2.16"
+  platforms:
+    - name: EL
+      versions: [all]
+dependencies: []

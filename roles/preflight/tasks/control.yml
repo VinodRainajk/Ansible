@@ -1,0 +1,80 @@
+---
+# Control node part of preflight (Section 0, step B). Runs on localhost.
+- name: Preflight | Create run log folder and run_id
+  ansible.builtin.include_role:
+    name: run_logging
+    tasks_from: init
+
+- name: Preflight | Control node checks
+  block:
+    - name: Preflight [ansible_version] ansible-core is in the supported range
+      ansible.builtin.assert:
+        that:
+          - ansible_version.full is version(preflight_ansible_core_min, '>=')
+          - (ansible_version.major ~ '.' ~ ansible_version.minor) is version(preflight_ansible_core_max, '<=')
+        fail_msg: >-
+          ansible-core {{ ansible_version.full }} is outside the supported range
+          {{ preflight_ansible_core_min }} to {{ preflight_ansible_core_max }}
+        quiet: true
+
+    - name: Preflight [inventory] both host groups have hosts
+      ansible.builtin.assert:
+        that:
+          - groups['murex_app'] | default([]) | length > 0
+          - groups['oracle_db'] | default([]) | length > 0
+        fail_msg: "inventory {{ ansible_inventory_sources | join(',') }} needs at least one host in murex_app and in oracle_db"
+        quiet: true
+
+    - name: Preflight | Read the git commit of the playbooks
+      ansible.builtin.command:
+        cmd: git rev-parse --short HEAD
+        chdir: "{{ playbook_dir }}"
+      register: _git_commit
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Preflight | Log run start
+      ansible.builtin.include_role:
+        name: run_logging
+        tasks_from: log
+      vars:
+        log_step: preflight
+        log_message: >-
+          run started env={{ murex_env }} playbook={{ run_playbook }}
+          user={{ lookup('ansible.builtin.env', 'USER') }}
+          control_node={{ lookup('ansible.builtin.pipe', 'hostname') }}
+          ansible_core={{ ansible_version.full }}
+          git_commit={{ _git_commit.stdout | default('unknown', true) }}
+          use_cyberark={{ use_cyberark | default(false) | bool }}
+          app_hosts={{ groups['murex_app'] | default([]) | join(',') }}
+          db_hosts={{ groups['oracle_db'] | default([]) | join(',') }}
+
+    - name: Preflight | Log control node ok
+      ansible.builtin.include_role:
+        name: run_logging
+        tasks_from: log
+      vars:
+        log_step: preflight
+        log_message: "host={{ inventory_hostname }} check=control_node ok run_log={{ run_log_file }}"
+
+    - name: Preflight | Mark the control node part done
+      ansible.builtin.set_fact:
+        preflight_control_done: true
+
+  rescue:
+    - name: Preflight | Log the failed check
+      ansible.builtin.include_role:
+        name: run_logging
+        tasks_from: log
+      vars:
+        log_level: ERROR
+        log_step: preflight
+        log_message: >-
+          host={{ inventory_hostname }}
+          check={{ ansible_failed_task.name | regex_search('\[(\w+)\]', '\1') | default(['control_node'], true) | first }}
+          detail={{ ansible_failed_result.msg | default('unknown error') }}
+
+    - name: Preflight | Stop the run
+      ansible.builtin.fail:
+        msg: "Preflight failed on the control node; see {{ run_log_file }}"

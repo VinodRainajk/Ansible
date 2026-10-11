@@ -1,0 +1,156 @@
+---
+# Target host part of preflight (Section 0, step B). Runs on every app VM and
+# Oracle host. Changes nothing except creating script_logs/<run_id>/ and the
+# staging folder. Task names carry the check name in [brackets]; the rescue
+# uses it in "ERROR preflight host=<host> check=<name> detail=<why>".
+# The rescue does not fail the host: every host finishes and logs its own
+# result, then the "Preflight | result" play stops the run if any host failed.
+- name: Preflight | Host checks
+  block:
+    - name: Preflight [ssh] SSH login and Python work
+      ansible.builtin.ping:
+      ignore_unreachable: true
+      register: _pf_ping
+
+    - name: Preflight [ssh] host is reachable
+      ansible.builtin.assert:
+        that:
+          - not (_pf_ping.unreachable | default(false))
+          - not (_pf_ping.failed | default(false))
+        fail_msg: >-
+          cannot log in as {{ ansible_user | default('?') }}:
+          {{ _pf_ping.msg | default('no details') }}
+        quiet: true
+
+    - name: Preflight [become_root] sudo to root works
+      ansible.builtin.command: id -u
+      become: true
+      register: _pf_root
+      changed_when: false
+      check_mode: false
+      failed_when: _pf_root.rc != 0 or _pf_root.stdout != '0'
+
+    - name: Preflight [become_script_user] sudo to the script user works
+      ansible.builtin.command: id -un
+      become: true
+      become_user: "{{ script_run_user }}"
+      register: _pf_user
+      changed_when: false
+      check_mode: false
+      failed_when: _pf_user.rc != 0 or _pf_user.stdout != script_run_user
+
+    - name: Preflight [script_logs] create {{ script_log_dir }}
+      ansible.builtin.file:
+        path: "{{ script_log_dir }}"
+        state: directory
+        owner: "{{ script_run_user }}"
+        group: "{{ script_run_group }}"
+        mode: "{{ log_dir_mode | default('0755') }}"
+      become: true
+
+    - name: Preflight [script_logs] create {{ script_log_dir ~ '/' ~ run_id }}
+      ansible.builtin.file:
+        path: "{{ script_log_dir }}/{{ run_id }}"
+        state: directory
+        owner: "{{ script_run_user }}"
+        group: "{{ script_run_group }}"
+        mode: "{{ log_dir_mode | default('0755') }}"
+      become: true
+
+    - name: Preflight [script_logs] the script user can write there
+      ansible.builtin.command:
+        argv:
+          - /bin/sh
+          - -c
+          - 'f="$1/.write-test-$$" && printf "ok\n" > "$f" && rm -f "$f"'
+          - write-test
+          - "{{ script_log_dir }}/{{ run_id }}"
+      become: true
+      become_user: "{{ script_run_user }}"
+      changed_when: false
+      check_mode: false
+
+    - name: Preflight [staging] create {{ remote_stage_dir }}
+      ansible.builtin.file:
+        path: "{{ remote_stage_dir }}"
+        state: directory
+        owner: "{{ script_run_user }}"
+        group: "{{ script_run_group }}"
+        mode: "0755"
+      become: true
+
+    - name: Preflight [staging] copy a test file to the host
+      ansible.builtin.copy:
+        dest: "{{ remote_stage_dir }}/.preflight-{{ run_id }}"
+        content: "preflight {{ run_id }}\n"
+        owner: "{{ script_run_user }}"
+        group: "{{ script_run_group }}"
+        mode: "0640"
+      become: true
+
+    - name: Preflight [staging] remove the test file
+      ansible.builtin.file:
+        path: "{{ remote_stage_dir }}/.preflight-{{ run_id }}"
+        state: absent
+      become: true
+
+    - name: Preflight [disk] read free space
+      ansible.builtin.command:
+        argv: [df, -Pm, "{{ remote_stage_dir }}", "{{ script_log_dir }}/{{ run_id }}"]
+      register: _pf_df
+      changed_when: false
+      check_mode: false
+
+    - name: Preflight [disk] enough free space in staging and logs
+      ansible.builtin.assert:
+        that:
+          - _pf_free_stage | int >= preflight_min_free_mb_stage | int
+          - _pf_free_logs | int >= preflight_min_free_mb_logs | int
+        fail_msg: >-
+          free space: staging {{ remote_stage_dir }} {{ _pf_free_stage }}MB (need {{ preflight_min_free_mb_stage }}MB),
+          logs {{ script_log_dir }} {{ _pf_free_logs }}MB (need {{ preflight_min_free_mb_logs }}MB)
+        quiet: true
+      vars:
+        _pf_free_stage: "{{ (_pf_df.stdout_lines[1].split())[3] }}"
+        _pf_free_logs: "{{ (_pf_df.stdout_lines[2].split())[3] }}"
+
+    - name: Preflight | Log host ok
+      ansible.builtin.include_role:
+        name: run_logging
+        tasks_from: log
+      vars:
+        log_step: preflight
+        log_message: >-
+          host={{ inventory_hostname }} check=all ok
+          login={{ ansible_user | default('?') }} script_user={{ script_run_user }}
+          script_logs={{ script_log_dir }}/{{ run_id }} staging={{ remote_stage_dir }}
+          free_mb_stage={{ (_pf_df.stdout_lines[1].split())[3] }}
+          free_mb_logs={{ (_pf_df.stdout_lines[2].split())[3] }}
+
+    - name: Preflight | Mark this host ok
+      ansible.builtin.set_fact:
+        preflight_host_ok: true
+
+  rescue:
+    - name: Preflight | Mark this host failed
+      ansible.builtin.set_fact:
+        preflight_host_ok: false
+
+    - name: Preflight | Log the failed check
+      ansible.builtin.include_role:
+        name: run_logging
+        tasks_from: log
+      vars:
+        log_level: ERROR
+        log_step: preflight
+        log_message: >-
+          host={{ inventory_hostname }}
+          {% if _pf_ping is defined and (_pf_ping.unreachable | default(false)) %}
+          check=ssh detail=cannot log in as {{ ansible_user | default('?') }}: {{ _pf_ping.msg | default('') | truncate(400) }}
+          {% elif ansible_failed_task is defined and ansible_failed_task.name | default('') is search('\[') %}
+          check={{ ansible_failed_task.name | regex_search('\[(\w+)\]', '\1') | first }}
+          detail={{ ((ansible_failed_result.msg | default(''))
+                    ~ ' ' ~ (ansible_failed_result.stderr | default(''))) | trim | truncate(400) }}
+          {% else %}
+          check=unknown detail=preflight stopped without a failed check
+          {% endif %}

@@ -1,0 +1,4 @@
+---
+# Short playbook name used in run_id (<env>-<playbook>-<YYYYMMDD-HHMMSS>).
+# Each entry playbook sets it through import_playbook vars.
+run_playbook: preflight

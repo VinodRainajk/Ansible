@@ -1,0 +1,10 @@
+---
+# Oracle DB hosts. Same credential pattern as murex_app.yml, with the oracle
+# host SSH account.
+ansible_user: "{{ ora_ssh_user | default(lookup('ansible.builtin.env', 'USER')) }}"
+ansible_password: "{{ ora_ssh_password | default('') }}"   # empty = SSH key
+ansible_become_password: "{{ ora_ssh_password | default('') }}"
+
+# OS user expdp/impdp scripts run as.
+script_run_user: oracle
+script_run_group: oinstall

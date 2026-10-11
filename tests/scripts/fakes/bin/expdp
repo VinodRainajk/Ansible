@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Fake expdp/impdp for tests. Reads the parfile, writes dump/log files into
+# the directory recorded by the fake sqlplus ($FAKE_ORA_STATE/dp_path).
+set -euo pipefail
+state=${FAKE_ORA_STATE:?}
+tool=$(basename "$0")
+pf=""
+for a in "$@"; do
+  case $a in parfile=*) pf=${a#parfile=} ;; *) echo "unexpected arg"; exit 1 ;; esac
+done
+[[ -f "$pf" ]] || { echo "no parfile"; exit 1; }
+[[ "$(stat -c %a "$pf")" == 600 ]] || { echo "parfile not 0600"; exit 1; }
+grep -q '^userid=' "$pf" || { echo "no userid in parfile"; exit 1; }
+dir=$(cat "$state/dp_path")
+get() { sed -n "s/^$1=//p" "$pf"; }
+log="${dir}/$(get logfile)"
+echo "Starting \"FAKE\".\"SYS_${tool^^}_SCHEMA_01\""
+if [[ $tool == expdp ]]; then
+  f=$(get dumpfile)
+  head -c 4096 /dev/urandom >"${dir}/${f//%U/01}"
+else
+  IFS=, read -ra files <<<"$(get dumpfile)"
+  for f in "${files[@]}"; do
+    [[ -f "${dir}/${f}" ]] || { echo "ORA-39001: dump ${f} not found"; exit 1; }
+  done
+  echo 42 >"$state/objects"
+  echo 1 >"$state/user_exists"
+fi
+rc=${FAKE_DP_RC:-0}
+{
+  echo "fake ${tool} log"
+  ((rc == 5)) && echo "ORA-31684: Object type USER:\"MUREX\" already exists"
+  echo "Job \"FAKE\".\"SYS_${tool^^}_SCHEMA_01\" successfully completed"
+} >"$log"
+cat "$log"
+exit "$rc"

@@ -1,0 +1,24 @@
+---
+# Last play of a playbook that finished its work: clear credentials, log the end.
+# Skipped when the playbook was imported by an orchestrator (orchestrated=true);
+# the orchestrator imports this itself at the very end.
+- name: End of run
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: End of run | Clear credentials and log the result
+      when: not (orchestrated | default(false) | bool)
+      block:
+        - name: End of run | Log finished
+          ansible.builtin.include_role:
+            name: run_logging
+            tasks_from: log
+          vars:
+            log_step: run
+            log_message: "run finished status=ok playbook={{ run_playbook_name }}"
+      always:
+        - name: End of run | Clear credentials
+          ansible.builtin.include_role:
+            name: credentials
+            tasks_from: clear

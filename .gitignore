@@ -1,0 +1,11 @@
+# Collections installed by ansible-galaxy into this repo
+collections/ansible_collections/
+
+# Real credentials never go into git, encrypted or not. Copy the .example file.
+inventories/*/group_vars/all/credentials.yml
+.vault_pass*
+*.vault-pass
+
+*.retry
+__pycache__/
+.ansible/

@@ -1,0 +1,32 @@
+---
+# Placeholder for sections not built yet. Fails on purpose so that an
+# automated caller never mistakes "nothing happened" for "rebuild done".
+# Input: stub_section, e.g. "Section 2 (Validate) for the app VM".
+- name: Not implemented yet
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Not implemented | Stop with a clear message
+      block:
+        - name: Not implemented | Log
+          ansible.builtin.include_role:
+            name: run_logging
+            tasks_from: log
+          vars:
+            log_level: WARN
+            log_step: run
+            log_message: >-
+              not implemented yet: {{ stub_section }}. Preflight and credentials passed;
+              nothing was changed on any host.
+
+        - name: Not implemented | Fail
+          ansible.builtin.fail:
+            msg: >-
+              {{ stub_section }} is not implemented yet. Preflight and credentials
+              passed and nothing was changed. Run log: {{ run_log_file }}
+      always:
+        - name: Not implemented | Clear credentials
+          ansible.builtin.include_role:
+            name: credentials
+            tasks_from: clear

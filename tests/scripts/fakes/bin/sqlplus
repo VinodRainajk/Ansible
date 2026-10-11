@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Fake sqlplus for tests. State lives in $FAKE_ORA_STATE (user_exists, objects).
+set -euo pipefail
+state=${FAKE_ORA_STATE:?}
+mkdir -p "$state"
+[[ -f "$state/user_exists" ]] || echo 1 >"$state/user_exists"
+[[ -f "$state/objects" ]] || echo 10 >"$state/objects"
+sql=$(cat)
+printf '%s\n' "$sql" >>"$state/sqlplus.history"
+grep -q '^connect ' <<<"$sql" || { echo "ERROR: not connected"; exit 1; }
+for a in "$@"; do
+  [[ "$a" == *"${FAKE_EXPECT_NO_ARG:-__none__}"* ]] && { echo "password seen on argv"; exit 9; }
+done
+
+if grep -qi 'drop user' <<<"$sql"; then
+  echo 0 >"$state/user_exists"
+  echo 0 >"$state/objects"
+elif grep -qi 'cascade constraints purge' <<<"$sql"; then
+  echo 0 >"$state/objects"
+elif grep -qi 'from dba_users' <<<"$sql"; then
+  cat "$state/user_exists"
+elif grep -qi "status = 'INVALID'" <<<"$sql"; then
+  echo 0
+elif grep -qi 'select count(\*) from dba_objects' <<<"$sql"; then
+  cat "$state/objects"
+elif grep -qi 'directory_path from dba_directories' <<<"$sql"; then
+  cat "$state/dp_path" 2>/dev/null || true
+elif grep -qi 'create or replace directory' <<<"$sql"; then
+  sed -n "s/.*as '\(.*\)';.*/\1/p" <<<"$sql" >"$state/dp_path"
+fi
+exit 0

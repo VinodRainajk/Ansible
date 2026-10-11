@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: preflight
+  namespace: murex
+  author: Murex platform team
+  description: "Section 0 preflight: control node and target host checks"
+  license: proprietary
+  min_ansible_version: "2.16"
+  platforms:
+    - name: EL
+      versions: [all]
+dependencies: []

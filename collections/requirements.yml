@@ -1,0 +1,10 @@
+---
+# Install into this repo (ansible.cfg looks here first):
+#   ansible-galaxy collection install -r collections/requirements.yml -p collections
+collections:
+  - name: cyberark.pas
+    version: ">=1.0.25"
+  - name: community.general
+    version: ">=8.0.0"
+  - name: ansible.posix
+    version: ">=1.5.0"

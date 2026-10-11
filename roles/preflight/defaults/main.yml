@@ -1,0 +1,9 @@
+---
+# ansible-core versions this repo is tested with (major.minor, inclusive).
+# Keep in step with ANSIBLE_CORE_MIN/MAX in scripts/common/preflight/check_control_node.sh.
+preflight_ansible_core_min: "2.16"
+preflight_ansible_core_max: "2.21"
+
+# Overridden per environment in group_vars/all/main.yml.
+preflight_min_free_mb_logs: 500
+preflight_min_free_mb_stage: 2048

@@ -1,0 +1,76 @@
+---
+# Runs on localhost. Sets run_id and run_log_file, creates run_logs/<run_id>/,
+# and falls back to /tmp/murex-ansible-preflight-<run_id>.log if it cannot.
+- name: Run logging | Work out run_id
+  ansible.builtin.set_fact:
+    run_id: "{{ run_id | default(murex_env ~ '-' ~ run_playbook ~ '-' ~ now(utc=true, fmt='%Y%m%d-%H%M%S')) }}"
+    run_playbook_name: "{{ run_playbook }}"
+    run_log_fallback: false
+
+- name: Run logging | Check run_id format
+  ansible.builtin.assert:
+    that: run_id is match('^[A-Za-z0-9._-]+$')
+    fail_msg: "run_id '{{ run_id }}' may only contain letters, digits, '.', '_' and '-'"
+    quiet: true
+
+- name: Run logging | Create run_logs/<run_id> on the control node
+  block:
+    - name: Run logging | Create {{ run_log_dir }}
+      ansible.builtin.file:
+        path: "{{ run_log_dir }}"
+        state: directory
+        mode: "{{ log_dir_mode | default('0755') }}"
+
+    - name: Run logging | Create run folder {{ run_log_dir ~ '/' ~ run_id }}
+      ansible.builtin.file:
+        path: "{{ run_log_dir }}/{{ run_id }}"
+        state: directory
+        mode: "{{ log_dir_mode | default('0755') }}"
+
+    - name: Run logging | Write a test file
+      ansible.builtin.copy:
+        dest: "{{ run_log_dir }}/{{ run_id }}/.write-test"
+        content: "ok\n"
+        mode: "0640"
+
+    - name: Run logging | Remove the test file
+      ansible.builtin.file:
+        path: "{{ run_log_dir }}/{{ run_id }}/.write-test"
+        state: absent
+
+    - name: Run logging | Use run_logs/<run_id>/run.log
+      ansible.builtin.set_fact:
+        run_log_file: "{{ run_log_dir }}/{{ run_id }}/run.log"
+
+  rescue:
+    - name: Run logging | Fall back to /tmp
+      ansible.builtin.set_fact:
+        run_log_file: "/tmp/murex-ansible-preflight-{{ run_id }}.log"
+        run_log_fallback: true
+        _run_logs_error: "{{ ansible_failed_result.msg | default('unknown error') | regex_replace('\\s+', ' ') | truncate(300) }}"
+
+    - name: Run logging | Log the failure
+      ansible.builtin.include_tasks: log.yml
+      vars:
+        log_level: ERROR
+        log_step: preflight
+        log_message: >-
+          host={{ inventory_hostname }} check=run_logs
+          detail=cannot create or write {{ run_log_dir }}/{{ run_id }}: {{ _run_logs_error }}.
+          Fallback log {{ run_log_file }}
+
+    - name: Run logging | Stop the run
+      ansible.builtin.fail:
+        msg: >-
+          Preflight failed: cannot create or write {{ run_log_dir }}/{{ run_id }}
+          ({{ _run_logs_error }}). Create it once with
+          'sudo mkdir -p {{ run_log_dir }} && sudo chown -R {{ lookup('ansible.builtin.env', 'USER') }} {{ log_base_dir }}'.
+          This failure is logged in {{ run_log_file }}.
+
+- name: Run logging | Share run_id and run_log_file with every host
+  ansible.builtin.set_fact:
+    run_id: "{{ run_id }}"
+    run_log_file: "{{ run_log_file }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  loop: "{{ groups['all'] }}"

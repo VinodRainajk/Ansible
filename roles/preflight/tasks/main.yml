@@ -1,0 +1,9 @@
+---
+# Prefer tasks_from: control (localhost) or tasks_from: host (app VM / Oracle host).
+- name: Preflight | Control node checks
+  ansible.builtin.include_tasks: control.yml
+  when: inventory_hostname == 'localhost'
+
+- name: Preflight | Host checks
+  ansible.builtin.include_tasks: host.yml
+  when: inventory_hostname != 'localhost'

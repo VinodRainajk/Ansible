@@ -1,0 +1,16 @@
+---
+# DB checks: instance, listener, tablespace, datapump rights.
+# STUB: runs preflight (Section 0) and credentials (Section 1), then stops with
+# "not implemented yet". The real steps arrive with Section 2.
+- name: Preflight
+  ansible.builtin.import_playbook: ../preflight.yml
+  vars:
+    run_playbook: db-validate
+
+- name: Credentials
+  ansible.builtin.import_playbook: ../common/load_credentials.yml
+
+- name: Not implemented yet
+  ansible.builtin.import_playbook: ../common/not_implemented.yml
+  vars:
+    stub_section: "Section 2 (Validate) for the Oracle host"

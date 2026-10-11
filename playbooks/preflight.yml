@@ -1,0 +1,69 @@
+---
+# Section 0, step B: can we run at all? First play of every playbook.
+# Run alone:  ansible-playbook -i inventories/<env> playbooks/preflight.yml [--ask-vault-pass]
+# Changes nothing except run_logs/<run_id>/ on the control node and
+# script_logs/<run_id>/ plus the staging folder on each host.
+
+- name: Preflight | control node
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Preflight | Control node checks
+      ansible.builtin.include_role:
+        name: preflight
+        tasks_from: control
+      when: not (preflight_control_done | default(false))
+
+- name: Preflight | app VM and Oracle host
+  hosts: murex_app:oracle_db
+  gather_facts: false
+  tasks:
+    - name: Preflight | Host checks
+      ansible.builtin.include_role:
+        name: preflight
+        tasks_from: host
+      when: not (hostvars['localhost']['preflight_hosts_done'] | default(false))
+
+- name: Preflight | result
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Preflight | Decide
+      when: not (preflight_hosts_done | default(false))
+      vars:
+        _pf_targets: "{{ groups['murex_app'] + groups['oracle_db'] }}"
+        _pf_ok_hosts: >-
+          {{ _pf_targets | map('extract', hostvars) | selectattr('preflight_host_ok', 'defined')
+             | selectattr('preflight_host_ok') | map(attribute='inventory_hostname') | list }}
+        _pf_failed_hosts: "{{ _pf_targets | reject('in', _pf_ok_hosts) | list }}"
+      block:
+        - name: Preflight | Log failed hosts
+          ansible.builtin.include_role:
+            name: run_logging
+            tasks_from: log
+          vars:
+            log_level: ERROR
+            log_step: preflight
+            log_message: "preflight failed hosts={{ _pf_failed_hosts | join(',') }} ok_hosts={{ _pf_ok_hosts | join(',') | default('none', true) }}"
+          when: _pf_failed_hosts | length > 0
+
+        - name: Preflight | Stop the run
+          ansible.builtin.fail:
+            msg: >-
+              Preflight failed on {{ _pf_failed_hosts | join(', ') }}. Nothing was changed
+              beyond the log and staging folders. See {{ run_log_file }}
+          when: _pf_failed_hosts | length > 0
+
+        - name: Preflight | Log result
+          ansible.builtin.include_role:
+            name: run_logging
+            tasks_from: log
+          vars:
+            log_step: preflight
+            log_message: "preflight ok hosts={{ _pf_ok_hosts | join(',') }}"
+
+        - name: Preflight | Mark the host part done
+          ansible.builtin.set_fact:
+            preflight_hosts_done: true

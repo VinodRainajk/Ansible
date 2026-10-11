@@ -1,0 +1,55 @@
+---
+# TEST ONLY settings (same shape as inventories/dev). Secrets go in credentials.yml next to this
+# file (see credentials.yml.example), or come from CyberArk.
+# Keep log_base_dir, control_stage_dir, use_cyberark and the
+# preflight_min_free_* values literal (no Jinja); check_control_node.sh reads them.
+
+murex_env: local
+
+# --- Logging (Section 0) ---------------------------------------------------
+log_base_dir: /tmp/murex-it-control
+run_log_dir: "{{ log_base_dir }}/run_logs"        # control node
+script_log_dir: "{{ log_base_dir }}/script_logs"  # app VM and Oracle host
+log_dir_mode: "0755"   # the Splunk Universal Forwarder must be able to read the logs
+
+# --- Staging ---------------------------------------------------------------
+control_stage_dir: /tmp/murex-it-control/stage  # control node (JFrog downloads, later sections)
+remote_stage_dir: /var/tmp/murex-ansible/stage    # every target host (scripts, artifacts)
+scripts_root: "{{ remote_stage_dir }}/scripts"
+
+# --- Preflight thresholds --------------------------------------------------
+preflight_min_free_mb_logs: 50
+preflight_min_free_mb_stage: 100
+
+# --- Credentials (Section 1) -----------------------------------------------
+# false: read group_vars/all/credentials.yml (vault-encrypt it).
+# true:  fetch from CyberArk CCP with the settings below.
+use_cyberark: false
+
+cyberark_ccp_url: http://127.0.0.1:18443
+cyberark_app_id: MUREX_IT
+cyberark_validate_certs: true
+cyberark_client_cert: ""   # path on the control node, if CCP needs a client cert
+cyberark_client_key: ""
+cyberark_timeout: 30
+cyberark_accounts:
+  - name: murex app SSH
+    safe: MUREX_IT_SAFE
+    object: it-murex_app_ssh
+    user_var: mx_ssh_user
+    secret_var: mx_ssh_password
+  - name: oracle host SSH
+    safe: MUREX_IT_SAFE
+    object: it-oracle_host_ssh
+    user_var: ora_ssh_user
+    secret_var: ora_ssh_password
+  - name: oracle DB admin
+    safe: MUREX_IT_SAFE
+    object: it-oracle_db_admin
+    user_var: db_admin_user
+    secret_var: db_admin_password
+  - name: jfrog
+    safe: MUREX_IT_SAFE
+    object: it-jfrog_token
+    user_var: jfrog_user
+    secret_var: jfrog_token
